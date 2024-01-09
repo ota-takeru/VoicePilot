@@ -1,4 +1,4 @@
-package com.example.myapplication
+package com.example.voicepilot
 
 import android.Manifest
 import android.content.pm.PackageManager
@@ -16,21 +16,48 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-import com.example.myapplication.ui.theme.MyApplicationTheme
-import com.example.myapplication.utils.NotificationHelper
-import com.example.myapplication.viewModels.SpeechRecognizerViewModel
+import com.example.voicepilot.ui.theme.MyApplicationTheme
+import com.example.voicepilot.utils.NotificationHelper
+import com.example.voicepilot.viewModels.AppInteractionViewModel
+import com.example.voicepilot.viewModels.GeminiViewModel
+import com.example.voicepilot.viewModels.SpeechRecognizerViewModel
+import dagger.hilt.android.AndroidEntryPoint
 import androidx.activity.compose.setContent as setContent1
 
+@AndroidEntryPoint
 class MainActivity : ComponentActivity() {
     private val notificationHelper = NotificationHelper(this)
-    private val viewModel: SpeechRecognizerViewModel by viewModels()
+
+//    private val speechRecognizerViewModel: SpeechRecognizerViewModel by lazy {
+//        ViewModelProvider(
+//            this,
+//            ViewModelProvider.AndroidViewModelFactory(application)
+//        )[SpeechRecognizerViewModel::class.java]
+//    }
+
+    //    private val geminiViewModel: GeminiViewModel by lazy {
+//        ViewModelProvider(
+//            this,
+//            ViewModelProvider.AndroidViewModelFactory(application)
+//        )[GeminiViewModel::class.java]
+//    }
+
+//    private val appInteractionViewModel by lazy {
+//        ViewModelProvider(
+//            this,
+//            ViewModelProvider.AndroidViewModelFactory(application)
+//        )[AppInteractionViewModel::class.java]
+//    }
+
+    private val appInteractionViewModel: AppInteractionViewModel by viewModels()
+    private val geminiViewModel: GeminiViewModel by viewModels()
+    private val speechRecognizerViewModel: SpeechRecognizerViewModel by viewModels()
+
 
     companion object {
         private const val PERMISSION_REQUEST_POST_NOTIFICATIONS =
@@ -45,7 +72,13 @@ class MainActivity : ComponentActivity() {
         handleNotificationsPermission()
         handleAudioPermission()
 
-        viewModel.initializeSpeechRecognizer(this)
+        speechRecognizerViewModel.initializeSpeechRecognizer()
+
+        geminiViewModel.responseText.observe(this) { newValue ->
+            Log.d("MainActivity", "Gemini response: $newValue")
+//            appInteractionViewModel.launchOtherApp(this, "他のアプリのパッケージ名")
+        }
+
 
         setContent1 {
             MyApplicationTheme {
@@ -54,12 +87,21 @@ class MainActivity : ComponentActivity() {
                     color = MaterialTheme.colorScheme.background
                 ) {
                     Column {
-                        Greeting(speechText)
-                        Greeting(resultText)
+                        val speechText by speechRecognizerViewModel.speechText.observeAsState()
+                        val resultText by speechRecognizerViewModel.resultText.observeAsState()
+                        val isListening by speechRecognizerViewModel.isListening.observeAsState()
+                        val responseText by geminiViewModel.responseText.observeAsState()
+
+
+//                        speechText?.let { Greeting(it) }
+                        resultText?.let { Greeting(it) }
                         StartRecordingButton(
-                            onStart = { startListening() },
-                            onStop = { stopListening() }
+                            isListening = isListening ?: false,
+                            onStart = { speechRecognizerViewModel.onStartRecording() },
+                            onStop = { speechRecognizerViewModel.onStopRecording() },
+                            startGemini = { geminiViewModel.generateContentFromModel(resultText) }
                         )
+                        responseText?.let { Greeting(it) }
                     }
                 }
             }
@@ -88,7 +130,7 @@ class MainActivity : ComponentActivity() {
     private fun handleAudioPermission() {
         when (PackageManager.PERMISSION_GRANTED) {
             ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) -> {
-                initializeSpeechRecognizer()
+                speechRecognizerViewModel.initializeSpeechRecognizer()
             }
 
             else -> ActivityCompat.requestPermissions(
@@ -127,30 +169,30 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun Greeting(name: String, modifier: Modifier = Modifier) {
-    Text(text = "Hello $name!", modifier = modifier)
+    Log.d("MainActivity", "Greeting: $name")
+    Text(text = "Hello $name", modifier = modifier)
 }
 
 @Composable
 fun StartRecordingButton(
+    isListening: Boolean,
     onStart: () -> Unit,
     onStop: () -> Unit,
+    startGemini: () -> Unit,
     modifier: Modifier = Modifier,
-
-    ) {
-    var isRecording by remember { mutableStateOf(false) }
-
+) {
     Box(modifier = modifier, contentAlignment = Alignment.BottomCenter) {
         Button(
             onClick = {
-                isRecording = !isRecording
-                if (isRecording) {
+                if (!isListening) {
                     onStart()
                 } else {
                     onStop()
+                    startGemini()
                 }
             },
         ) {
-            Text(text = if (isRecording) "Stop Recording" else "Start Recording")
+            Text(text = if (isListening) "Stop Recording" else "Start Recording")
         }
     }
 }

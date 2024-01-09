@@ -1,8 +1,8 @@
 <resources>
     <string name="app_name">My Application</string>
-
     <string name="channel_name">Example Channel</string>
     <string name="channel_description">Example Channel Description</string>
     <string name="notification_title">Example Title</string>
     <string name="notification_text">This is a sample notification using Kotlin.</string>
+    <string name="accessibility_service_description">This is the description of the accessibility service.</string>
 </resources>
