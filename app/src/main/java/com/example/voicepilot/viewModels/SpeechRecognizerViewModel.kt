@@ -11,7 +11,9 @@ import android.speech.SpeechRecognizer
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.MutableLiveData
+import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.launch
 import java.util.Locale
 import javax.inject.Inject
 
@@ -28,14 +30,22 @@ class SpeechRecognizerViewModel @Inject constructor(application: Application) :
 
     val isListening = MutableLiveData(false)
 
+    private val _recordingStopped = MutableLiveData<Event<String>>()
+    val recordingStopped: MutableLiveData<Event<String>> = _recordingStopped
+
     fun onStartRecording() {
-        resultTextBuilder.setLength(0)
-        speechText.postValue("")
-        startListening()
+        viewModelScope.launch {
+            resultTextBuilder.setLength(0)
+            speechText.postValue("")
+            resultText.postValue("")
+            startListening()
+        }
     }
 
     fun onStopRecording() {
-        stopListening()
+        viewModelScope.launch {
+            stopListening()
+        }
     }
 
     fun initializeSpeechRecognizer() {
@@ -91,10 +101,12 @@ class SpeechRecognizerViewModel @Inject constructor(application: Application) :
                             resultTextBuilder.append(mostConfidentResult)
                                 .append(" ") // Append the text
 
-                            // Update the MutableLiveData with the new text
-                            resultText.postValue(resultTextBuilder.toString())
+                            val text = resultTextBuilder.toString()
+                            resultText.postValue(text)
+                            _recordingStopped.value = Event(text)
+
                         }
-                        Log.d("Speech", "Recognized Text: ${speechText.value}")
+                        Log.d("Speech", "Recognized Text: ${resultText.value}")
                     }
 
                     override fun onPartialResults(partialResults: Bundle?) {
@@ -141,6 +153,7 @@ class SpeechRecognizerViewModel @Inject constructor(application: Application) :
         Log.d("Speech", "Stopped listening")
 
         speechRecognizer?.stopListening()
+
     }
 
     override fun onCleared() {
@@ -148,7 +161,28 @@ class SpeechRecognizerViewModel @Inject constructor(application: Application) :
         stopListening()
         speechRecognizer?.destroy()
         speechRecognizer = null
+        Log.d("SpeechRecognizerViewModel", "onCleared")
+
     }
 
+}
+
+open class Event<out T>(private val content: T) {
+
+    private var hasBeenHandled = false
+
+    fun getContentIfNotHandled(): T? {
+        return if (hasBeenHandled) {
+            null
+        } else {
+            hasBeenHandled = true
+            content
+        }
+    }
+
+    /**
+     * Returns the content, even if it's already been handled.
+     */
+    fun peekContent(): T = content
 }
 
